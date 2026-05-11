@@ -24,6 +24,14 @@ pub fn find_best_anchor_sequence(bytes: &[u8], mask: &[bool]) -> Option<Vec<(usi
     let mut best_sequence: Option<Vec<(usize, u8)>> = None;
     let mut best_score = u32::MAX;
 
+    // precompute frequency of all known bytes
+    let mut freq = [0u32; 256];
+    for (i, &byte) in bytes.iter().enumerate() {
+        if mask[i] {
+            freq[byte as usize] += 1;
+        }
+    }
+
     // Find all consecutive known byte sequences (length 2-4)
     let mut current_seq = Vec::new();
 
@@ -33,7 +41,16 @@ pub fn find_best_anchor_sequence(bytes: &[u8], mask: &[bool]) -> Option<Vec<(usi
 
             if current_seq.len() >= 2 && current_seq.len() <= 4 {
                 // Calculate rarity score for this sequence
-                let score = calculate_sequence_rarity(bytes, mask, &current_seq);
+                let freq_score: u32 = current_seq.iter().map(|(_, b)| freq[*b as usize]).sum();
+                // calculate continuity bonus (more consecutive bytes are better)
+                let mut continuity_bonus = 0;
+                for j in 1..current_seq.len() {
+                    if current_seq[j].0 == current_seq[j - 1].0 + 1 {
+                        continuity_bonus += 1;
+                    }
+                }
+
+                let score = freq_score - continuity_bonus as u32;
 
                 if score < best_score {
                     best_score = score;
@@ -52,27 +69,7 @@ pub fn find_best_anchor_sequence(bytes: &[u8], mask: &[bool]) -> Option<Vec<(usi
     }
 
     best_sequence
-}
-
-/// Calculates rarity score for a byte sequence (lower = rarer = better).
-///
-/// Uses sum of individual byte frequencies as a simplified rarity metric.
-fn calculate_sequence_rarity(bytes: &[u8], mask: &[bool], sequence: &[(usize, u8)]) -> u32 {
-    sequence
-        .iter()
-        .map(|(_, byte)| get_byte_frequency(bytes, mask, *byte))
-        .sum()
-}
-
-/// Gets frequency of a byte in the pattern (among known bytes only).
-fn get_byte_frequency(bytes: &[u8], mask: &[bool], byte: u8) -> u32 {
-    bytes
-        .iter()
-        .zip(mask.iter())
-        .filter(|(_, &m)| m)
-        .filter(|(&b, _)| b == byte)
-        .count() as u32
-}
+} 
 
 /// Finds the index of the most rare non-wildcard byte for heuristic searching.
 ///
